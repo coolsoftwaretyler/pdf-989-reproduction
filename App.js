@@ -16,6 +16,8 @@ const { CrashReproducerModule } = NativeModules;
 export default function App() {
   const [pdfPath, setPdfPath] = useState(null);
   const [viewing, setViewing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
 
   useEffect(() => {
     if (Platform.OS === 'android' && CrashReproducerModule) {
@@ -26,23 +28,15 @@ export default function App() {
   }, []);
 
   const openDocument = useCallback(() => {
+    setCurrentPage(1);
+    setTotalPages(0);
     setViewing(true);
   }, []);
 
-  // Navigating back from the PDF viewer simulates the real crash scenario:
-  // the component unmounts while the background rendering thread is still
-  // working, causing a double-close of the PdfPage — exactly issue #989.
-  //
-  // Without the fix: the app force-closes (uncaught IllegalStateException).
-  // With the fix: navigates back cleanly.
   const closeDocument = useCallback(() => {
     setViewing(false);
-    if (CrashReproducerModule) {
-      CrashReproducerModule.triggerDoubleClose();
-    }
   }, []);
 
-  // PDF viewer screen
   if (viewing && pdfPath) {
     return (
       <SafeAreaView style={styles.container}>
@@ -52,14 +46,23 @@ export default function App() {
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Sample Document</Text>
-          <View style={styles.backButton} />
+          <View style={styles.headerRight}>
+            {totalPages > 0 && (
+              <Text style={styles.pageIndicator}>
+                {currentPage} / {totalPages}
+              </Text>
+            )}
+          </View>
         </View>
         <View style={styles.pdfContainer}>
           <Pdf
             source={{ uri: pdfPath }}
             style={styles.pdf}
             onLoadComplete={(numberOfPages) => {
-              console.log(`PDF loaded: ${numberOfPages} pages`);
+              setTotalPages(numberOfPages);
+            }}
+            onPageChanged={(page) => {
+              setCurrentPage(page);
             }}
             onError={(error) => {
               console.log('PDF error:', error);
@@ -70,7 +73,6 @@ export default function App() {
     );
   }
 
-  // Document list screen
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="auto" />
@@ -95,7 +97,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  // Document list
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -141,7 +142,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#ccc',
   },
-  // PDF viewer
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -162,6 +162,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  headerRight: {
+    width: 60,
+    alignItems: 'flex-end',
+  },
+  pageIndicator: {
+    fontSize: 13,
+    color: '#888',
   },
   pdfContainer: {
     flex: 1,

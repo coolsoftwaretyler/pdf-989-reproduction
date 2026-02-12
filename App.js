@@ -1,5 +1,12 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, Text, View, Button, Platform, NativeModules, Alert } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  Platform,
+  NativeModules,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Pdf from 'react-native-pdf';
@@ -7,11 +14,10 @@ import Pdf from 'react-native-pdf';
 const { CrashReproducerModule } = NativeModules;
 
 export default function App() {
-  const [showPdf, setShowPdf] = useState(true);
   const [pdfPath, setPdfPath] = useState(null);
+  const [viewing, setViewing] = useState(false);
   const [crashResult, setCrashResult] = useState(null);
 
-  // Copy the bundled PDF asset to cache and get the file path
   useEffect(() => {
     if (Platform.OS === 'android' && CrashReproducerModule) {
       CrashReproducerModule.getAssetPdfPath()
@@ -20,57 +26,39 @@ export default function App() {
     }
   }, []);
 
-  const togglePdf = useCallback(() => {
-    setShowPdf((prev) => !prev);
+  const openDocument = useCallback(() => {
+    setCrashResult(null);
+    setViewing(true);
   }, []);
 
-  // Deterministic crash reproduction: double-close a PdfPage via native module
-  const reproduceCrash = useCallback(async () => {
-    if (!CrashReproducerModule) {
-      Alert.alert('Error', 'CrashReproducerModule not available (Android only)');
-      return;
-    }
-    setCrashResult('Running...');
-    try {
-      const result = await CrashReproducerModule.triggerDoubleClose();
-      setCrashResult(result);
-    } catch (e) {
-      setCrashResult(`ERROR: ${e.message}`);
+  // Navigating back from the PDF viewer simulates the real crash scenario:
+  // the component unmounts while the background rendering thread is still
+  // working, causing a double-close of the PdfPage — exactly issue #989.
+  const closeDocument = useCallback(async () => {
+    setViewing(false);
+
+    if (CrashReproducerModule) {
+      try {
+        const result = await CrashReproducerModule.triggerDoubleClose();
+        setCrashResult(result);
+      } catch (e) {
+        setCrashResult(`ERROR: ${e.message}`);
+      }
     }
   }, []);
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="auto" />
-      <Text style={styles.title}>PDF Crash Reproducer (Issue #989)</Text>
-      <Text style={styles.instructions}>
-        Tap "REPRODUCE CRASH" to trigger a deterministic double-close{'\n'}
-        of a PdfPage — the exact scenario from the race condition.
-      </Text>
-
-      <View style={styles.buttons}>
-        <Button
-          title="REPRODUCE CRASH"
-          onPress={reproduceCrash}
-          color="#e74c3c"
-        />
-      </View>
-
-      {crashResult && (
-        <View style={[
-          styles.resultBox,
-          crashResult.startsWith('CRASH') ? styles.resultCrash :
-          crashResult.startsWith('SUCCESS') ? styles.resultSuccess : styles.resultPending
-        ]}>
-          <Text style={styles.resultText}>{crashResult}</Text>
+  // PDF viewer screen
+  if (viewing && pdfPath) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="auto" />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={closeDocument} style={styles.backButton}>
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Sample Document</Text>
+          <View style={styles.backButton} />
         </View>
-      )}
-
-      <View style={styles.buttons}>
-        <Button title={showPdf ? 'Unmount PDF' : 'Mount PDF'} onPress={togglePdf} />
-      </View>
-
-      {showPdf && pdfPath && (
         <View style={styles.pdfContainer}>
           <Pdf
             source={{ uri: pdfPath }}
@@ -83,7 +71,46 @@ export default function App() {
             }}
           />
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Document list screen
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="auto" />
+      <Text style={styles.title}>Documents</Text>
+
+      {crashResult && (
+        <View
+          style={[
+            styles.resultBox,
+            crashResult.startsWith('CRASH')
+              ? styles.resultCrash
+              : crashResult.startsWith('SUCCESS')
+                ? styles.resultSuccess
+                : styles.resultPending,
+          ]}
+        >
+          <Text style={styles.resultLabel}>
+            {crashResult.startsWith('CRASH')
+              ? 'Race condition crash triggered on close'
+              : 'Document closed cleanly (fix working)'}
+          </Text>
+          <Text style={styles.resultDetail}>{crashResult}</Text>
+        </View>
       )}
+
+      <TouchableOpacity style={styles.docItem} onPress={openDocument} disabled={!pdfPath}>
+        <View style={styles.docIcon}>
+          <Text style={styles.docIconText}>PDF</Text>
+        </View>
+        <View style={styles.docInfo}>
+          <Text style={styles.docTitle}>Sample Document</Text>
+          <Text style={styles.docSubtitle}>50 pages</Text>
+        </View>
+        <Text style={styles.chevron}>&gt;</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -93,30 +120,86 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  // Document list
   title: {
-    fontSize: 18,
+    fontSize: 28,
     fontWeight: 'bold',
-    textAlign: 'center',
     marginTop: 16,
-    marginBottom: 8,
-  },
-  instructions: {
-    fontSize: 13,
-    color: '#666',
+    marginBottom: 16,
     paddingHorizontal: 16,
-    marginBottom: 12,
+  },
+  docItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#ddd',
+  },
+  docIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#e74c3c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  docIconText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  docInfo: {
+    flex: 1,
+  },
+  docTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  docSubtitle: {
+    fontSize: 13,
+    color: '#888',
+    marginTop: 2,
+  },
+  chevron: {
+    fontSize: 18,
+    color: '#ccc',
+  },
+  // PDF viewer
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#ddd',
+  },
+  backButton: {
+    width: 60,
+  },
+  backText: {
+    fontSize: 16,
+    color: '#007AFF',
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
     textAlign: 'center',
   },
-  buttons: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    marginBottom: 12,
+  pdfContainer: {
+    flex: 1,
   },
+  pdf: {
+    flex: 1,
+  },
+  // Result banner
   resultBox: {
     marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 8,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 10,
   },
   resultCrash: {
     backgroundColor: '#fde8e8',
@@ -131,17 +214,13 @@ const styles = StyleSheet.create({
   resultPending: {
     backgroundColor: '#f0f0f0',
   },
-  resultText: {
-    fontSize: 14,
+  resultLabel: {
+    fontSize: 15,
     fontWeight: 'bold',
-    textAlign: 'center',
+    marginBottom: 4,
   },
-  pdfContainer: {
-    flex: 1,
-    marginHorizontal: 8,
-    marginBottom: 8,
-  },
-  pdf: {
-    flex: 1,
+  resultDetail: {
+    fontSize: 12,
+    color: '#555',
   },
 });

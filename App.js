@@ -16,7 +16,6 @@ const { CrashReproducerModule } = NativeModules;
 export default function App() {
   const [pdfPath, setPdfPath] = useState(null);
   const [viewing, setViewing] = useState(false);
-  const [crashResult, setCrashResult] = useState(null);
 
   useEffect(() => {
     if (Platform.OS === 'android' && CrashReproducerModule) {
@@ -27,23 +26,19 @@ export default function App() {
   }, []);
 
   const openDocument = useCallback(() => {
-    setCrashResult(null);
     setViewing(true);
   }, []);
 
   // Navigating back from the PDF viewer simulates the real crash scenario:
   // the component unmounts while the background rendering thread is still
   // working, causing a double-close of the PdfPage — exactly issue #989.
-  const closeDocument = useCallback(async () => {
+  //
+  // Without the fix: the app force-closes (uncaught IllegalStateException).
+  // With the fix: navigates back cleanly.
+  const closeDocument = useCallback(() => {
     setViewing(false);
-
     if (CrashReproducerModule) {
-      try {
-        const result = await CrashReproducerModule.triggerDoubleClose();
-        setCrashResult(result);
-      } catch (e) {
-        setCrashResult(`ERROR: ${e.message}`);
-      }
+      CrashReproducerModule.triggerDoubleClose();
     }
   }, []);
 
@@ -80,26 +75,6 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="auto" />
       <Text style={styles.title}>Documents</Text>
-
-      {crashResult && (
-        <View
-          style={[
-            styles.resultBox,
-            crashResult.startsWith('CRASH')
-              ? styles.resultCrash
-              : crashResult.startsWith('SUCCESS')
-                ? styles.resultSuccess
-                : styles.resultPending,
-          ]}
-        >
-          <Text style={styles.resultLabel}>
-            {crashResult.startsWith('CRASH')
-              ? 'Race condition crash triggered on close'
-              : 'Document closed cleanly (fix working)'}
-          </Text>
-          <Text style={styles.resultDetail}>{crashResult}</Text>
-        </View>
-      )}
 
       <TouchableOpacity style={styles.docItem} onPress={openDocument} disabled={!pdfPath}>
         <View style={styles.docIcon}>
@@ -193,34 +168,5 @@ const styles = StyleSheet.create({
   },
   pdf: {
     flex: 1,
-  },
-  // Result banner
-  resultBox: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 14,
-    borderRadius: 10,
-  },
-  resultCrash: {
-    backgroundColor: '#fde8e8',
-    borderWidth: 2,
-    borderColor: '#e74c3c',
-  },
-  resultSuccess: {
-    backgroundColor: '#e8fde8',
-    borderWidth: 2,
-    borderColor: '#27ae60',
-  },
-  resultPending: {
-    backgroundColor: '#f0f0f0',
-  },
-  resultLabel: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  resultDetail: {
-    fontSize: 12,
-    color: '#555',
   },
 });

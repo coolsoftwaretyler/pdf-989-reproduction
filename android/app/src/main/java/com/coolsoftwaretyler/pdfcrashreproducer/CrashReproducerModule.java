@@ -1,5 +1,7 @@
 package com.coolsoftwaretyler.pdfcrashreproducer;
 
+import android.content.Context;
+
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
@@ -8,6 +10,10 @@ import com.facebook.react.bridge.Promise;
 import io.legere.pdfiumandroid.util.Config;
 import io.legere.pdfiumandroid.util.ConfigKt;
 import io.legere.pdfiumandroid.util.AlreadyClosedBehavior;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 
 /**
  * Native module that deterministically reproduces the "Already closed" crash
@@ -29,6 +35,28 @@ public class CrashReproducerModule extends ReactContextBaseJavaModule {
     @Override
     public String getName() {
         return "CrashReproducerModule";
+    }
+
+    @ReactMethod
+    public void getAssetPdfPath(Promise promise) {
+        try {
+            Context context = getReactApplicationContext();
+            File cacheFile = new File(context.getCacheDir(), "sample.pdf");
+            if (!cacheFile.exists()) {
+                InputStream is = context.getAssets().open("sample.pdf");
+                FileOutputStream fos = new FileOutputStream(cacheFile);
+                byte[] buffer = new byte[4096];
+                int len;
+                while ((len = is.read(buffer)) != -1) {
+                    fos.write(buffer, 0, len);
+                }
+                fos.close();
+                is.close();
+            }
+            promise.resolve(cacheFile.getAbsolutePath());
+        } catch (Exception e) {
+            promise.reject("ERROR", e.getMessage(), e);
+        }
     }
 
     @ReactMethod

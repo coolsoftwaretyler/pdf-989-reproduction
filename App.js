@@ -1,37 +1,33 @@
-import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, View, Button, SafeAreaView, Platform, NativeModules, Alert } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { StyleSheet, Text, View, Button, Platform, NativeModules, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Pdf from 'react-native-pdf';
 
 const { CrashReproducerModule } = NativeModules;
 
-// Use bundled asset on Android (remote URLs fail in emulator due to SSL trust manager issue)
-const PDF_SOURCES = [
-  Platform.OS === 'android'
-    ? { uri: 'bundle-assets://sample.pdf' }
-    : { uri: 'https://pdfobject.com/pdf/sample-3pp.pdf' },
-  Platform.OS === 'android'
-    ? { uri: 'bundle-assets://sample.pdf' }
-    : { uri: 'https://pdfobject.com/pdf/sample-3pp.pdf' },
-];
-
 export default function App() {
   const [showPdf, setShowPdf] = useState(true);
-  const [sourceIndex, setSourceIndex] = useState(0);
+  const [pdfPath, setPdfPath] = useState(null);
   const [crashResult, setCrashResult] = useState(null);
+
+  // Copy the bundled PDF asset to cache and get the file path
+  useEffect(() => {
+    if (Platform.OS === 'android' && CrashReproducerModule) {
+      CrashReproducerModule.getAssetPdfPath()
+        .then((path) => setPdfPath(path))
+        .catch((e) => console.log('Failed to get PDF path:', e));
+    }
+  }, []);
 
   const togglePdf = useCallback(() => {
     setShowPdf((prev) => !prev);
   }, []);
 
-  const swapSource = useCallback(() => {
-    setSourceIndex((prev) => (prev + 1) % PDF_SOURCES.length);
-  }, []);
-
   // Deterministic crash reproduction: double-close a PdfPage via native module
   const reproduceCrash = useCallback(async () => {
     if (!CrashReproducerModule) {
-      Alert.alert('Error', 'CrashReproducerModule not available');
+      Alert.alert('Error', 'CrashReproducerModule not available (Android only)');
       return;
     }
     setCrashResult('Running...');
@@ -72,13 +68,12 @@ export default function App() {
 
       <View style={styles.buttons}>
         <Button title={showPdf ? 'Unmount PDF' : 'Mount PDF'} onPress={togglePdf} />
-        <Button title="Swap Source" onPress={swapSource} />
       </View>
 
-      {showPdf && (
+      {showPdf && pdfPath && (
         <View style={styles.pdfContainer}>
           <Pdf
-            source={PDF_SOURCES[sourceIndex]}
+            source={{ uri: pdfPath }}
             style={styles.pdf}
             onLoadComplete={(numberOfPages) => {
               console.log(`PDF loaded: ${numberOfPages} pages`);

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,16 +8,16 @@ import {
   NativeModules,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Pdf from 'react-native-pdf';
 
 const { CrashReproducerModule } = NativeModules;
 
-export default function App() {
+const Stack = createNativeStackNavigator();
+
+function DocumentListScreen({ navigation }) {
   const [pdfPath, setPdfPath] = useState(null);
-  const [viewing, setViewing] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
 
   useEffect(() => {
     if (Platform.OS === 'android' && CrashReproducerModule) {
@@ -27,58 +27,14 @@ export default function App() {
     }
   }, []);
 
-  const openDocument = useCallback(() => {
-    setCurrentPage(1);
-    setTotalPages(0);
-    setViewing(true);
-  }, []);
-
-  const closeDocument = useCallback(() => {
-    setViewing(false);
-  }, []);
-
-  if (viewing && pdfPath) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar style="auto" />
-        <View style={styles.header}>
-          <TouchableOpacity onPress={closeDocument} style={styles.backButton}>
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Sample Document</Text>
-          <View style={styles.headerRight}>
-            {totalPages > 0 && (
-              <Text style={styles.pageIndicator}>
-                {currentPage} / {totalPages}
-              </Text>
-            )}
-          </View>
-        </View>
-        <View style={styles.pdfContainer}>
-          <Pdf
-            source={{ uri: pdfPath }}
-            style={styles.pdf}
-            onLoadComplete={(numberOfPages) => {
-              setTotalPages(numberOfPages);
-            }}
-            onPageChanged={(page) => {
-              setCurrentPage(page);
-            }}
-            onError={(error) => {
-              console.log('PDF error:', error);
-            }}
-          />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="auto" />
-      <Text style={styles.title}>Documents</Text>
-
-      <TouchableOpacity style={styles.docItem} onPress={openDocument} disabled={!pdfPath}>
+      <TouchableOpacity
+        style={styles.docItem}
+        onPress={() => navigation.navigate('PDFViewer', { pdfPath })}
+        disabled={!pdfPath}
+      >
         <View style={styles.docIcon}>
           <Text style={styles.docIconText}>PDF</Text>
         </View>
@@ -88,7 +44,60 @@ export default function App() {
         </View>
         <Text style={styles.chevron}>&gt;</Text>
       </TouchableOpacity>
-    </SafeAreaView>
+    </View>
+  );
+}
+
+function PDFViewerScreen({ route }) {
+  const { pdfPath } = route.params;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+
+  return (
+    <View style={styles.container}>
+      <StatusBar style="auto" />
+      {totalPages > 0 && (
+        <View style={styles.pageBar}>
+          <Text style={styles.pageIndicator}>
+            Page {currentPage} of {totalPages}
+          </Text>
+        </View>
+      )}
+      <View style={styles.pdfContainer}>
+        <Pdf
+          source={{ uri: pdfPath }}
+          style={styles.pdf}
+          onLoadComplete={(numberOfPages) => {
+            setTotalPages(numberOfPages);
+          }}
+          onPageChanged={(page) => {
+            setCurrentPage(page);
+          }}
+          onError={(error) => {
+            console.log('PDF error:', error);
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
+export default function App() {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator>
+        <Stack.Screen
+          name="Documents"
+          component={DocumentListScreen}
+          options={{ headerLargeTitle: true }}
+        />
+        <Stack.Screen
+          name="PDFViewer"
+          component={PDFViewerScreen}
+          options={{ title: 'Sample Document' }}
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
@@ -96,13 +105,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 16,
-    paddingHorizontal: 16,
   },
   docItem: {
     flexDirection: 'row',
@@ -142,30 +144,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#ccc',
   },
-  header: {
-    flexDirection: 'row',
+  pageBar: {
+    paddingVertical: 6,
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#ddd',
-  },
-  backButton: {
-    width: 60,
-  },
-  backText: {
-    fontSize: 16,
-    color: '#007AFF',
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  headerRight: {
-    width: 60,
-    alignItems: 'flex-end',
   },
   pageIndicator: {
     fontSize: 13,

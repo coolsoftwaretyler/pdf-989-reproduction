@@ -67,6 +67,7 @@ function PDFViewerScreen({ route }) {
         <Pdf
           source={{ uri: pdfPath }}
           style={styles.pdf}
+          enableAnnotationRendering={true}
           onLoadComplete={(numberOfPages) => {
             setTotalPages(numberOfPages);
           }}
@@ -94,7 +95,7 @@ export default function App() {
         <Stack.Screen
           name="PDFViewer"
           component={PDFViewerScreen}
-          options={{ title: 'Sample Document' }}
+          options={{ title: 'Sample Document', animation: 'none' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

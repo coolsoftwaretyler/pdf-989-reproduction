@@ -1,57 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
+  Platform,
+  NativeModules,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Pdf from 'react-native-pdf';
 
+const { CrashReproducerModule } = NativeModules;
+
 const Stack = createNativeStackNavigator();
 
-// Public PDF URLs for testing (real-world documents, like keene uses)
-const DOCUMENTS = [
-  {
-    title: 'Technical Data Sheet',
-    subtitle: '4 pages',
-    url: 'https://www.w3.org/WAI/WCAG21/Techniques/pdf/img/table-word.pdf',
-  },
-  {
-    title: 'Sample Report',
-    subtitle: '8 pages',
-    url: 'https://www.africau.edu/images/default/sample.pdf',
-  },
-];
-
 function DocumentListScreen({ navigation }) {
+  const [pdfPath, setPdfPath] = useState(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && CrashReproducerModule) {
+      CrashReproducerModule.getAssetPdfPath()
+        .then((path) => setPdfPath(path))
+        .catch((e) => console.log('Failed to get PDF path:', e));
+    }
+  }, []);
+
   return (
     <View style={styles.container}>
       <StatusBar style="auto" />
-      {DOCUMENTS.map((doc, index) => (
-        <TouchableOpacity
-          key={index}
-          style={styles.docItem}
-          onPress={() => navigation.navigate('PDFViewer', { title: doc.title, url: doc.url })}
-        >
-          <View style={styles.docIcon}>
-            <Text style={styles.docIconText}>PDF</Text>
-          </View>
-          <View style={styles.docInfo}>
-            <Text style={styles.docTitle}>{doc.title}</Text>
-            <Text style={styles.docSubtitle}>{doc.subtitle}</Text>
-          </View>
-          <Text style={styles.chevron}>&gt;</Text>
-        </TouchableOpacity>
-      ))}
+      <TouchableOpacity
+        style={styles.docItem}
+        onPress={() => navigation.navigate('PDFViewer', { title: 'Sample Document', pdfPath })}
+        disabled={!pdfPath}
+      >
+        <View style={styles.docIcon}>
+          <Text style={styles.docIconText}>PDF</Text>
+        </View>
+        <View style={styles.docInfo}>
+          <Text style={styles.docTitle}>Sample Document</Text>
+          <Text style={styles.docSubtitle}>50 pages</Text>
+        </View>
+        <Text style={styles.chevron}>&gt;</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 function PDFViewerScreen({ route }) {
-  const { url } = route.params;
+  const { pdfPath } = route.params;
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
 
@@ -67,7 +65,7 @@ function PDFViewerScreen({ route }) {
       )}
       <View style={styles.pdfContainer}>
         <Pdf
-          source={{ uri: url, cache: true }}
+          source={{ uri: pdfPath, cache: true }}
           style={styles.pdf}
           trustAllCerts={false}
           onLoadComplete={(numberOfPages) => {
@@ -97,7 +95,7 @@ export default function App() {
         <Stack.Screen
           name="PDFViewer"
           component={PDFViewerScreen}
-          options={({ route }) => ({ title: route.params.title })}
+          options={({ route }) => ({ title: route.params.title || 'PDF' })}
         />
       </Stack.Navigator>
     </NavigationContainer>
